@@ -1,5 +1,4 @@
 #!/bin/bash
-
 # Reboot Log Viewer Script
 # This script helps view and analyze the reboot tracking logs
 
@@ -266,6 +265,26 @@ show_successful() {
     
     echo "Time                | Downtime | Notes"
     echo "--------------------+----------+---------------------------"
+    tail -n +2 "$REBOOT_LOG_CSV" | awk -F',' '$5=="Yes" {
+        gsub(/"/, "", $7);  # Remove quotes from notes
+        printf "%-19s | %-8s | %-25s\n", $1, $6"s", $7
+    }'
+}
+
+show_failed() {
+    check_files
+    echo "=== Failed Reboots Only ==="
+    echo "Session: $(basename "$SESSION_DIR")"
+    echo ""
+    
+    local count=$(tail -n +2 "$REBOOT_LOG_CSV" | awk -F',' '$5!="Yes"' | wc -l)
+    if [ "$count" -eq 0 ]; then
+        echo "No failed reboots logged."
+        return
+    fi
+    
+    echo "Time                | Init | Down | Back | Notes"
+    echo "--------------------+------+------+------+---------------------------"
     tail -n +2 "$REBOOT_LOG_CSV" | awk -F',' '$5!="Yes" {
         gsub(/"/, "", $7);  # Remove quotes from notes
         printf "%-19s | %-4s | %-4s | %-4s | %-25s\n", $1, $2, $3, $4, $7
@@ -357,6 +376,7 @@ tail_log() {
     tail -f "$LOG_FILE"
 }
 
+# Main case statement
 case "$1" in
     summary)
         show_summary
@@ -389,24 +409,4 @@ case "$1" in
         show_usage
         exit 1
         ;;
-esac" | awk -F',' '$5=="Yes" {
-        gsub(/"/, "", $7);  # Remove quotes from notes
-        printf "%-19s | %-8s | %-25s\n", $1, $6"s", $7
-    }'
-}
-
-show_failed() {
-    check_files
-    echo "=== Failed Reboots Only ==="
-    echo "Session: $(basename "$SESSION_DIR")"
-    echo ""
-    
-    local count=$(tail -n +2 "$REBOOT_LOG_CSV" | awk -F',' '$5!="Yes"' | wc -l)
-    if [ "$count" -eq 0 ]; then
-        echo "No failed reboots logged."
-        return
-    fi
-    
-    echo "Time                | Init | Down | Back | Notes"
-    echo "--------------------+------+------+------+---------------------------"
-    tail -n +2 "$REBOOT_LOG_CSV
+esac

@@ -5,7 +5,7 @@
 
 # Configuration
 REMOTE_HOST="10.23.66.81"
-REBOOT_INTERVAL=500  # Interval in seconds (3600 = 1 hour, 1800 = 30 min, 7200 = 2 hours)
+REBOOT_INTERVAL=600  # Interval in seconds (600 = 10 min, 1800 = 30 min, 3600 = 1 hour)
 ENABLE_LOGGING=true
 REBOOT_WAIT_TIME=120  # Time to wait before checking if system is back online (seconds)
 PING_TIMEOUT=30       # How long to wait for system to go down before considering reboot failed
