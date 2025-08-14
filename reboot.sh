@@ -6,17 +6,50 @@
 # Configuration
 REMOTE_HOST="10.23.66.81"
 REBOOT_INTERVAL=500  # Interval in seconds (3600 = 1 hour, 1800 = 30 min, 7200 = 2 hours)
-# REBOOT_LOG_CSV="$HOME/rebootScript/ssh_reboot_tracking.csv"
-# LOG_FILE="$HOME/rebootScript/ssh_reboot.log"
 ENABLE_LOGGING=true
 REBOOT_WAIT_TIME=120  # Time to wait before checking if system is back online (seconds)
 PING_TIMEOUT=30       # How long to wait for system to go down before considering reboot failed
 
-TIMESTAMP=$(date +%Y%m%d_%H%M%S) 
-OUTPUT_DIR="./logs/$TIMESTAMP"     
-LOG_FILE="$OUTPUT_DIR/ssh_reboot.log" 
-REBOOT_LOG_CSV="$OUTPUT_DIR/ssh_reboot.csv"
+# Log directory configuration
+LOG_BASE_DIR="./logs"
+CURRENT_SESSION_FILE="$LOG_BASE_DIR/.current_session"
 
+# Use session directory from environment variable (set by manage script) or find/create one
+if [ -n "$REBOOT_SESSION_DIR" ]; then
+    # Use the session directory passed from the manager script
+    SESSION_DIR="$REBOOT_SESSION_DIR"
+else
+    # Check if there's an existing session
+    mkdir -p "$LOG_BASE_DIR"
+    
+    if [ -f "$CURRENT_SESSION_FILE" ]; then
+        local existing_session=$(cat "$CURRENT_SESSION_FILE")
+        local existing_dir="$LOG_BASE_DIR/$existing_session"
+        
+        # Use existing session if it exists
+        if [ -d "$existing_dir" ]; then
+            SESSION_DIR="$existing_dir"
+        else
+            # Create new session if existing one is gone
+            TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+            SESSION_DIR="$LOG_BASE_DIR/$TIMESTAMP"
+            mkdir -p "$SESSION_DIR"
+            echo "$TIMESTAMP" > "$CURRENT_SESSION_FILE"
+        fi
+    else
+        # Create new session
+        TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+        SESSION_DIR="$LOG_BASE_DIR/$TIMESTAMP"
+        mkdir -p "$SESSION_DIR"
+        echo "$TIMESTAMP" > "$CURRENT_SESSION_FILE"
+    fi
+fi
+
+LOG_FILE="$SESSION_DIR/ssh_reboot.log"
+REBOOT_LOG_CSV="$SESSION_DIR/ssh_reboot.csv"
+
+# Ensure session directory exists
+mkdir -p "$SESSION_DIR"
 
 # Create log files if they don't exist
 touch "$LOG_FILE" 2>/dev/null || {
@@ -199,6 +232,7 @@ trap cleanup SIGINT SIGTERM
 # Main loop
 main() {
     log_message "Starting periodic SSH reboot script for $REMOTE_HOST"
+    log_message "Session directory: $SESSION_DIR"
     log_message "Reboot interval: $REBOOT_INTERVAL seconds"
     
     while true; do
