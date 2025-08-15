@@ -5,44 +5,39 @@
 
 # Configuration
 REMOTE_HOST="10.23.66.81"
-REBOOT_INTERVAL=600  # Interval in seconds (600 = 10 min, 1800 = 30 min, 3600 = 1 hour)
+REBOOT_INTERVAL=220  # Interval in seconds (600 = 10 min, 1800 = 30 min, 3600 = 1 hour)
 ENABLE_LOGGING=true
-REBOOT_WAIT_TIME=120  # Time to wait before checking if system is back online (seconds)
-PING_TIMEOUT=30       # How long to wait for system to go down before considering reboot failed
+REBOOT_WAIT_TIME=300  # Maximum time to wait for system to come back online (seconds)
+PING_TIMEOUT=5        # Timeout for individual ping attempts (seconds)
+SHUTDOWN_DETECTION_TIME=30  # Time to wait for system to go down (seconds)
+SSH_READY_WAIT=10     # Time to wait after system is reachable for SSH to be ready
 
 # Log directory configuration
 LOG_BASE_DIR="./logs"
 CURRENT_SESSION_FILE="$LOG_BASE_DIR/.current_session"
 
-# Use session directory from environment variable (set by manage script) or find/create one
+# Function to create a new session (always create new when script starts)
+create_new_session() {
+    mkdir -p "$LOG_BASE_DIR"
+    
+    # Always create a new session when script starts
+    local timestamp=$(date +%Y%m%d_%H%M%S)
+    local session_dir="$LOG_BASE_DIR/$timestamp"
+    mkdir -p "$session_dir"
+    echo "$timestamp" > "$CURRENT_SESSION_FILE"
+    echo "$session_dir"
+}
+
+# Use session directory from environment variable (set by manage script) or create new one
 if [ -n "$REBOOT_SESSION_DIR" ]; then
     # Use the session directory passed from the manager script
     SESSION_DIR="$REBOOT_SESSION_DIR"
+    # Update the current session file to match
+    session_name=$(basename "$REBOOT_SESSION_DIR")
+    echo "$session_name" > "$CURRENT_SESSION_FILE"
 else
-    # Check if there's an existing session
-    mkdir -p "$LOG_BASE_DIR"
-    
-    if [ -f "$CURRENT_SESSION_FILE" ]; then
-        local existing_session=$(cat "$CURRENT_SESSION_FILE")
-        local existing_dir="$LOG_BASE_DIR/$existing_session"
-        
-        # Use existing session if it exists
-        if [ -d "$existing_dir" ]; then
-            SESSION_DIR="$existing_dir"
-        else
-            # Create new session if existing one is gone
-            TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-            SESSION_DIR="$LOG_BASE_DIR/$TIMESTAMP"
-            mkdir -p "$SESSION_DIR"
-            echo "$TIMESTAMP" > "$CURRENT_SESSION_FILE"
-        fi
-    else
-        # Create new session
-        TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-        SESSION_DIR="$LOG_BASE_DIR/$TIMESTAMP"
-        mkdir -p "$SESSION_DIR"
-        echo "$TIMESTAMP" > "$CURRENT_SESSION_FILE"
-    fi
+    # Create new session when running directly
+    SESSION_DIR=$(create_new_session)
 fi
 
 LOG_FILE="$SESSION_DIR/ssh_reboot.log"
@@ -73,7 +68,7 @@ log_message() {
 
 # Function to check if remote host is reachable
 check_host_reachable() {
-    ping -c 1 -W 5 "$REMOTE_HOST" >/dev/null 2>&1
+    ping -c 1 -W "$PING_TIMEOUT" "$REMOTE_HOST" >/dev/null 2>&1
     return $?
 }
 
@@ -124,7 +119,7 @@ ssh_reboot() {
     log_message "Attempting to reboot $REMOTE_HOST..."
     
     # Try different reboot methods
-    if ssh -o ConnectTimeout=10 -o BatchMode=yes -o StrictHostKeyChecking=no "$REMOTE_HOST" 'sudo reboot' 2>/dev/null; then
+    if ssh -o ConnectTimeout=10 -o BatchMode=yes -o StrictHostKeyChecking=no "$REMOTE_HOST" 'sudo reboot reboot=cold' 2>/dev/null; then
         reboot_initiated="Yes"
         log_message "Reboot command sent successfully"
     elif ssh -o ConnectTimeout=10 -o BatchMode=yes -o StrictHostKeyChecking=no "$REMOTE_HOST" 'reboot' 2>/dev/null; then
@@ -148,7 +143,9 @@ ssh_reboot() {
     # Check if system actually went down
     log_message "Checking if system is going down..."
     local down_detected=false
-    for i in {1..6}; do  # Check for 30 seconds (6 * 5 seconds)
+    local check_count=$((SHUTDOWN_DETECTION_TIME / PING_TIMEOUT))
+    
+    for i in $(seq 1 $check_count); do
         if ! check_host_reachable; then
             system_down="Yes"
             down_detected=true
@@ -156,27 +153,28 @@ ssh_reboot() {
             log_message "System is down - reboot initiated successfully"
             break
         fi
-        sleep 5
+        sleep "$PING_TIMEOUT"
     done
     
     if [ "$down_detected" = false ]; then
-        notes="System did not go down after reboot command"
+        notes="System did not go down after reboot command within ${SHUTDOWN_DETECTION_TIME}s"
         log_message "WARNING: System appears to still be up after reboot command"
         log_to_csv "$start_time" "$reboot_initiated" "$system_down" "$system_back" "$success" "$downtime" "$notes"
         return 1
     fi
     
     # Wait for system to come back online
-    log_message "Waiting for system to come back online..."
+    log_message "Waiting for system to come back online (max ${REBOOT_WAIT_TIME}s)..."
     local back_online=false
     local check_start=$(date +%s)
+    local max_checks=$((REBOOT_WAIT_TIME / PING_TIMEOUT))
     
-    # Wait up to 5 minutes for system to come back
-    for i in {1..60}; do  # 60 * 5 seconds = 5 minutes
-        sleep 5
+    # Wait up to REBOOT_WAIT_TIME for system to come back
+    for i in $(seq 1 $max_checks); do
+        sleep "$PING_TIMEOUT"
         if check_host_reachable; then
             # System is reachable, wait a bit more for SSH to be ready
-            sleep 10
+            sleep "$SSH_READY_WAIT"
             if get_remote_uptime >/dev/null 2>&1; then
                 system_back="Yes"
                 back_online=true
@@ -210,8 +208,8 @@ ssh_reboot() {
     done
     
     if [ "$back_online" = false ]; then
-        notes="System did not come back online within 5 minutes"
-        log_message "ERROR: System did not come back online within 5 minutes"
+        notes="System did not come back online within ${REBOOT_WAIT_TIME} seconds"
+        log_message "ERROR: System did not come back online within ${REBOOT_WAIT_TIME} seconds"
         log_to_csv "$start_time" "$reboot_initiated" "$system_down" "$system_back" "$success" "$downtime" "$notes"
         return 1
     fi
@@ -234,6 +232,8 @@ main() {
     log_message "Starting periodic SSH reboot script for $REMOTE_HOST"
     log_message "Session directory: $SESSION_DIR"
     log_message "Reboot interval: $REBOOT_INTERVAL seconds"
+    log_message "Max wait time for reboot: $REBOOT_WAIT_TIME seconds"
+    log_message "Ping timeout: $PING_TIMEOUT seconds"
     
     while true; do
         ssh_reboot
