@@ -28,15 +28,16 @@ This repository includes three scripts that work together to provide a complete 
 ## 📁 File Structure
 
 ```
-ssh-reboot-suite/
+rebootScript/
 ├── reboot.sh           # Main reboot execution script
 ├── manageScreen.sh     # Screen session manager
 ├── viewLogs.sh         # Log viewer and analyzer
 ├── logs/               # Auto-created log directory
 │   ├── .current_session    # Current active session reference
 │   └── YYYYMMDD_HHMMSS/    # Session directories
-│       ├── ssh_reboot.log  # Detailed text logs
-│       └── ssh_reboot.csv  # Structured reboot data
+│       ├── ssh_reboot.csv  # Structured reboot data
+│       └── ssh_reboot.log  # Detailed text logs
+├── LICENSE
 └── README.md
 ```
 
