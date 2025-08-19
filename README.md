@@ -72,6 +72,13 @@ rebootScript/
    echo 'username ALL=(ALL) NOPASSWD: /sbin/reboot' | sudo tee /etc/sudoers.d/reboot
    ```
 
+   Afterwards check your updated sudo privileges
+   ```bash
+   # On remote system, run:
+   sudo -l
+   sudo visudo -c
+   ```
+
 5. Edit configuration in `reboot.sh` (see Configuration section below for details):
    ```bash
    REMOTE_HOST="10.23.66.81"        # Your target IP/hostname

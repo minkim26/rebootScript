@@ -5,7 +5,7 @@
 
 # Configuration
 REMOTE_HOST="10.23.66.81"
-REBOOT_INTERVAL=220  # Interval in seconds (600 = 10 min, 1800 = 30 min, 3600 = 1 hour)
+REBOOT_INTERVAL=60  # Interval in seconds (600 = 10 min, 1800 = 30 min, 3600 = 1 hour)
 ENABLE_LOGGING=true
 REBOOT_WAIT_TIME=300  # Maximum time to wait for system to come back online (seconds)
 PING_TIMEOUT=5        # Timeout for individual ping attempts (seconds)
@@ -119,15 +119,15 @@ ssh_reboot() {
     log_message "Attempting to reboot $REMOTE_HOST..."
     
     # Try different reboot methods
-    if ssh -o ConnectTimeout=10 -o BatchMode=yes -o StrictHostKeyChecking=no "$REMOTE_HOST" 'sudo reboot reboot=cold' 2>/dev/null; then
+    if ssh -o ConnectTimeout=10 -o BatchMode=yes -o StrictHostKeyChecking=no "$REMOTE_HOST" 'sudo shutdown -r now' 2>/dev/null; then
         reboot_initiated="Yes"
         log_message "Reboot command sent successfully"
-    elif ssh -o ConnectTimeout=10 -o BatchMode=yes -o StrictHostKeyChecking=no "$REMOTE_HOST" 'reboot' 2>/dev/null; then
-        reboot_initiated="Yes"
-        log_message "Reboot command sent successfully (without sudo)"
-    elif ssh -o ConnectTimeout=10 -o BatchMode=yes -o StrictHostKeyChecking=no "$REMOTE_HOST" '/sbin/reboot' 2>/dev/null; then
-        reboot_initiated="Yes"
-        log_message "Reboot command sent successfully (direct /sbin/reboot)"
+#    elif ssh -o ConnectTimeout=10 -o BatchMode=yes -o StrictHostKeyChecking=no "$REMOTE_HOST" 'reboot' 2>/dev/null; then
+#        reboot_initiated="Yes"
+#        log_message "Reboot command sent successfully (without sudo)"
+#    elif ssh -o ConnectTimeout=10 -o BatchMode=yes -o StrictHostKeyChecking=no "$REMOTE_HOST" '/sbin/reboot' 2>/dev/null; then
+#        reboot_initiated="Yes"
+#        log_message "Reboot command sent successfully (direct /sbin/reboot)"
     else
         notes="Failed to execute reboot command - sudo password required or insufficient permissions"
         log_message "ERROR: Failed to execute reboot command"
